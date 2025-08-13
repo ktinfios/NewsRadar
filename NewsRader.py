@@ -1,14 +1,19 @@
 import csv 
 import feedparser 
+import logging
 import pandas as pd 
 import nltk 
 from datetime import datetime, timedelta
 from newspaper import Article
 from playwright.sync_api import sync_playwright
+
 from time import sleep 
 from tqdm import tqdm 
 from transformers import PegasusTokenizer, PegasusForConditionalGeneration
 from urllib.parse import quote_plus
+
+logging.basicConfig(filename='app.log', level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 GOOGLE_NEWS_URL = "https://news.google.com"
 GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/search?q={}&hl=en-US&gl=US&ceid=US%3Aen"
@@ -16,18 +21,19 @@ GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/search?q={}&hl=en-US&gl=US&cei
 COMPANIES = ["Bulten", "Volvo", "Viking Life", "Rockwool A/S", "Carlsberg", 
              "Hornbach Baumarkt AG", "Bültel Bekleidungswerke GmbH",
              "OBI Group Holding SE & Co.KGaA", "LKW Walter", "F. H. Bertling"]
-KEY_TERMS = ["Digital Transformation", "Bottleneck", "Warehouse", "CEO", "Optimization", "Fulfillment",
-             "Investment Funding", "Merger Acquisition"]
+# KEY_TERMS = ["Digital Transformation", "Bottleneck", "Warehouse", "CEO", "Optimization", "Fulfillment",
+#              "Investment Funding", "Merger Acquisition"]
+KEY_TERMS = ["Warehouse", "CEO", "Investment Funding", "Merger Acquisition"]
 
-ARTICLE_AGE_DAYS = 1000
+ARTICLE_AGE_DAYS = 90
 
 # NLTK Resources
 nltk.download('popular')
 
 # Pegasus Model for Summarization
-model = "google/pegasus-xsum"
-tokenizer = PegasusTokenizer.from_pretrained(model)
-model = PegasusForConditionalGeneration.from_pretrained(model)
+# model = "google/pegasus-xsum"
+# tokenizer = PegasusTokenizer.from_pretrained(model)
+# model = PegasusForConditionalGeneration.from_pretrained(model)
 
 def get_old_articles():
     try:
@@ -35,6 +41,7 @@ def get_old_articles():
             reader = csv.DictReader(f)
             return pd.DataFrame(reader)
     except FileNotFoundError:
+        logging.debug('No existing news articles found.')
         return pd.DataFrame()
 
 def get_redirect_link(url) -> str:
@@ -63,7 +70,8 @@ def get_redirect_link(url) -> str:
             return final_url
             
         except Exception as e:
-            print(f"Error during redirect resolution: {e}")
+            # print(f"Error during redirect resolution: {e}")
+            logging.error(f"Error during redirect resolution: {e}")
             browser.close()
             return url  # Return original URL if redirect fails
 
@@ -74,33 +82,34 @@ def skip_article_based_on_age(news_item, age_days: int) -> bool:
 
     return article_date < time_frame
 
-def summarize_article(text: str) -> str:
+# def summarize_article(text: str) -> str:
     
-    tokens = tokenizer(text, truncation=True, padding="longest", return_tensors="pt")
-    summary_ids = model.generate(**tokens)
-    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+#     tokens = tokenizer(text, truncation=True, padding="longest", return_tensors="pt")
+#     summary_ids = model.generate(**tokens)
+#     summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
-    return summary
+#     return summary
 
 def parse_article(article: Article, url: str = None) -> dict:
     try:
 
         article.download()
         article.parse()
-        # article.nlp()
+        article.nlp()
 
-        summary = summarize_article(article.text) if article.text else ""
+        # summary = summarize_article(article.text) if article.text else ""
 
         return {
             "title": article.title,
             "authors": article.authors,
             "publish_date": article.publish_date,
-            # "summary": article.summary,
-            "summary": summary,
+            "summary": article.summary,
+            # "summary": summary,
             "text": article.text,
             "url": url
         }
     except Exception as e:
+        logging.debug(f"Error parsing article {url}: {e}")
         return {
             "title": "",
             "publish_date": None,
@@ -129,7 +138,7 @@ def search_news_rss(company: str, key_term: str) -> list:
 
             news_item = {
                 'title': entry.title,
-                'url': entry.link,
+                'url': article_url,
                 'published': entry.published,
                 'summary': entry.summary if 'summary' in entry else '',
                 'text': "",
@@ -150,7 +159,7 @@ def search_news_rss(company: str, key_term: str) -> list:
                 news_item["text"] = parsed_article["text"]
 
             except Exception as e:
-                # print(f"Error parsing article {article_url}: {e}")
+                logging.error(f"Error parsing article {article_url}: {e}")
                 pass
             
             news_data.append(news_item)
@@ -185,7 +194,7 @@ def main():
 
             for article in news_article:
                 news_articles.append(article)
-            sleep(0.5)
+            sleep(0.25)
 
     news_articles = pd.DataFrame(news_articles)
 
