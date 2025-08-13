@@ -70,7 +70,6 @@ def get_redirect_link(url) -> str:
             return final_url
             
         except Exception as e:
-            # print(f"Error during redirect resolution: {e}")
             logging.error(f"Error during redirect resolution: {e}")
             browser.close()
             return url  # Return original URL if redirect fails
@@ -109,7 +108,7 @@ def parse_article(article: Article, url: str = None) -> dict:
             "url": url
         }
     except Exception as e:
-        logging.debug(f"Error parsing article {url}: {e}")
+        logging.debug(f"Error parsing and summarizing article {url}: {e}")
         return {
             "title": "",
             "publish_date": None,
@@ -133,7 +132,7 @@ def search_news_rss(company: str, key_term: str) -> list:
             # print(f"Redirected URL for {company} - {key_term}: {article_url}")
 
             if "google.com" in article_url:
-                print(f"Skipping article with failed redirect: {entry.title[:50]}...")
+                logging.debug(f"Skipping article with failed redirect: {entry.title} {entry.link}")
                 continue
 
             news_item = {
@@ -147,7 +146,7 @@ def search_news_rss(company: str, key_term: str) -> list:
             }
 
             if skip_article_based_on_age(entry, ARTICLE_AGE_DAYS):
-                # print(f"Skipping old article from {news_item['published'].strftime('%Y-%m-%d')}: {entry.title[:50]}...")
+                logging.debug(f"Skipping old article from {news_item['published']}: {entry.title[:50]}...")
                 continue
 
             try:
@@ -156,17 +155,17 @@ def search_news_rss(company: str, key_term: str) -> list:
                 news_item["publish_date"] = parsed_article["publish_date"]
                 if parsed_article["summary"]:
                     news_item["summary"] = parsed_article["summary"]
+                else:
+                    logging.debug(f"No summary generated for article {article_url}, default entry summary.")
                 news_item["text"] = parsed_article["text"]
-
             except Exception as e:
                 logging.error(f"Error parsing article {article_url}: {e}")
-                pass
             
             news_data.append(news_item)
 
         return news_data
     except Exception as e:
-        # print(f"Error fetching RSS feed for {company} - {key_term}: {e}")
+        logging.error(f"Error fetching RSS feed for {company} - {key_term}: {e}")
         return []
 
 def write_to_text_file(news_articles: pd.DataFrame, filename: str = "news_articles.txt"):
@@ -202,7 +201,7 @@ def main():
         new_news_articles = news_articles[~news_articles['url'].isin(old_articles['url'])]
     else:
         new_news_articles = news_articles
-        print("No previous articles found or invalid format, treating all articles as new.")
+        logging.info("No previous articles found or invalid format, treating all articles as new.")
 
     news_articles[["company", "key_term","title", "publish_date", "url"]].to_csv("news_articles.csv", index=False, encoding='utf-8-sig', mode='a')
 
