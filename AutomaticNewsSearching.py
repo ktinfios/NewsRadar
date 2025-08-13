@@ -40,14 +40,6 @@ def get_old_articles():
     except FileNotFoundError:
         return pd.DataFrame()
 
-def get_playwright_driver():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        return browser
-
-def close_playwright_driver(browser):
-    browser.close()
-
 def get_selenium_driver():
     options = Options()
     options.add_argument("--headless")  # Run in headless mode
