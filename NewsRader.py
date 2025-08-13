@@ -2,15 +2,13 @@ import csv
 import feedparser 
 import pandas as pd 
 import nltk 
-from playwright.sync_api import sync_playwright
-from tqdm import tqdm 
-from time import sleep 
 from datetime import datetime, timedelta
-from urllib.parse import quote_plus
-
 from newspaper import Article
-from bs4 import BeautifulSoup
-nltk.download('popular')
+from playwright.sync_api import sync_playwright
+from time import sleep 
+from tqdm import tqdm 
+from transformers import PegasusTokenizer, PegasusForConditionalGeneration
+from urllib.parse import quote_plus
 
 GOOGLE_NEWS_URL = "https://news.google.com"
 GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/search?q={}&hl=en-US&gl=US&ceid=US%3Aen"
@@ -22,6 +20,14 @@ KEY_TERMS = ["Digital Transformation", "Bottleneck", "Warehouse", "CEO", "Optimi
              "Investment Funding", "Merger Acquisition"]
 
 ARTICLE_AGE_DAYS = 1000
+
+# NLTK Resources
+nltk.download('popular')
+
+# Pegasus Model for Summarization
+model = "google/pegasus-xsum"
+tokenizer = PegasusTokenizer.from_pretrained(model)
+model = PegasusForConditionalGeneration.from_pretrained(model)
 
 def get_old_articles():
     try:
@@ -68,19 +74,29 @@ def skip_article_based_on_age(news_item, age_days: int) -> bool:
 
     return article_date < time_frame
 
+def summarize_article(text: str) -> str:
+    
+    tokens = tokenizer(text, truncation=True, padding="longest", return_tensors="pt")
+    summary_ids = model.generate(**tokens)
+    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+
+    return summary
 
 def parse_article(article: Article, url: str = None) -> dict:
     try:
 
         article.download()
         article.parse()
-        article.nlp()
+        # article.nlp()
+
+        summary = summarize_article(article.text) if article.text else ""
 
         return {
             "title": article.title,
             "authors": article.authors,
             "publish_date": article.publish_date,
-            "summary": article.summary,
+            # "summary": article.summary,
+            "summary": summary,
             "text": article.text,
             "url": url
         }
@@ -129,7 +145,8 @@ def search_news_rss(company: str, key_term: str) -> list:
                 article_obj = Article(article_url)
                 parsed_article = parse_article(article_obj, article_url)
                 news_item["publish_date"] = parsed_article["publish_date"]
-                news_item["summary"] = parsed_article["summary"]
+                if parsed_article["summary"]:
+                    news_item["summary"] = parsed_article["summary"]
                 news_item["text"] = parsed_article["text"]
 
             except Exception as e:
