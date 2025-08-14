@@ -61,6 +61,7 @@ Modify search parameters in `NewsRadar.py`:
 - Fine tune an tranformer model or other neural network (like [Pegasus](https://huggingface.co/docs/transformers/en/model_doc/pegasus)) to produce better summarizes 
 - Find a way to speed up the current NLP portion of the application 
    - NLP is expensive, so finding ways to speed up how this is done would speed up the overall application
+- Find a way to handle pay wall summaries 
 
 ## Security Notes
 
