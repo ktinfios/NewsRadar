@@ -5,7 +5,7 @@ import json
 import os
 import logging
 from datetime import datetime
-from NewsRadar import search_news_rss, get_old_articles, write_to_text_file, write_to_email_body, COMPANIES, KEY_TERMS
+from NewsRadar import search_news_rss, get_old_articles, write_to_text_file, write_to_email_body, COMPANIES, KEY_TERMS, main_web_friendly
 from Email import send_email
 import threading
 from time import sleep
@@ -61,91 +61,59 @@ def save_user_preferences(preferences):
 search_status = {"running": False, "progress": 0, "message": "Ready"}
 
 def run_custom_search(selected_companies, selected_key_terms):
-    """Run NewsRadar search with custom company and key term selection"""
+    """Run NewsRadar search with custom company and key term selection using main_web_friendly"""
     global search_status
     
+    def progress_callback(progress, message):
+        """Callback function to update search status"""
+        search_status = {"running": True, "progress": progress, "message": message}
+    
     try:
-        search_status = {"running": True, "progress": 10, "message": "Initializing search..."}
+        search_status = {"running": True, "progress": 0, "message": "Starting search..."}
         
-        # Get old articles to avoid duplicates
-        old_articles = get_old_articles()
-        news_articles = []
-        
-        total_combinations = len(selected_companies) * len(selected_key_terms)
-        current_combination = 0
-        
-        search_status = {"running": True, "progress": 20, "message": "Searching for news articles..."}
-        
-        for company in selected_companies:
-            for term in selected_key_terms:
-                current_combination += 1
-                progress = 20 + int((current_combination / total_combinations) * 60)
-                search_status = {"running": True, "progress": progress, 
-                               "message": f"Searching {company} for {term}..."}
-                
-                news_article = search_news_rss(company, term)
-                for article in news_article:
-                    news_articles.append(article)
-                sleep(0.25)
-        
-        search_status = {"running": True, "progress": 85, "message": "Processing results..."}
-        
-        news_articles = pd.DataFrame(news_articles)
-        
-        if not old_articles.empty and 'url' in old_articles.columns:
-            new_news_articles = news_articles[~news_articles['url'].isin(old_articles['url'])]
-        else:
-            new_news_articles = news_articles
-            logger.info("No previous articles found or invalid format, treating all articles as new.")
-
-        # Save articles
-        if not news_articles.empty:
-            news_articles[["company", "key_term","title", "publish_date", "url"]].to_csv(
-                "news_articles.csv", index=False, encoding='utf-8-sig', mode='a')
-
-        # Prepare email
-        subject = f"NewsRadar - {datetime.now().strftime('%Y-%m-%d')}"
-        body = ""
-
-        if not new_news_articles.empty:
-            logger.info(f"Found {len(new_news_articles)} new articles.")
-            write_to_text_file(new_news_articles, "news_articles.txt")
-            subject += f"- Found {len(new_news_articles)} new articles"
-            body = write_to_email_body(new_news_articles)
-        else:
-            logger.info("No new articles found.")
-            subject += " - No New Articles"
-            body = "No news articles found this week."
-        
-        # Try to send email if configured
+        # Get user preferences for email
         preferences = load_user_preferences()
-        if preferences.get("receiver_email"):
-            try:
-                send_email(preferences["receiver_email"], subject, body)
-                logger.info(f"Email sent successfully to {preferences['receiver_email']}")
-            except Exception as e:
-                logger.error(f"Failed to send email: {e}")
+        receiver_email = preferences.get("receiver_email")
         
-        search_status = {"running": False, "progress": 100, 
-                        "message": f"Search completed! Found {len(new_news_articles)} new articles."}
+        # Use the main_web_friendly function from NewsRadar.py
+        result = main_web_friendly(
+            companies=selected_companies, 
+            key_terms=selected_key_terms,
+            progress_callback=progress_callback,
+            receiver_email=receiver_email
+        )
+        
+        if result['success']:
+            search_status = {"running": False, "progress": 100, 
+                            "message": result['message']}
+        else:
+            search_status = {"running": False, "progress": 0, 
+                            "message": f"Search failed: {result.get('error', 'Unknown error')}"}
         
     except Exception as e:
         logger.error(f"Error running custom search: {e}")
         search_status = {"running": False, "progress": 0, "message": f"Search failed: {str(e)}"}
 
 def get_recent_articles(limit=20):
-    """Get recent articles from the CSV file"""
+    """Get recent articles from the CSV file, sorted by retrieval order (most recent first)"""
     try:
         if os.path.exists("news_articles.csv"):
             df = pd.read_csv("news_articles.csv")
-            # Sort by most recent if publish_date exists
-            if not df.empty and 'publish_date' in df.columns:
-                df['publish_date'] = pd.to_datetime(df['publish_date'], errors='coerce')
-                df = df.sort_values('publish_date', ascending=False)
-                # Convert datetime back to string for JSON serialization
-                df['publish_date'] = df['publish_date'].dt.strftime('%Y-%m-%d %H:%M:%S')
-                # Replace NaT with empty string
-                df['publish_date'] = df['publish_date'].fillna('')
+            
+            if not df.empty:
+                # Add an index to track retrieval order (higher index = more recently retrieved)
+                df = df.reset_index(drop=True)
+                
+                # Sort by index in descending order (most recently retrieved first)
+                df = df.sort_index(ascending=False)
+                
+                # Handle publish_date formatting for display
+                if 'publish_date' in df.columns:
+                    df['publish_date'] = pd.to_datetime(df['publish_date'], errors='coerce')
+                    # Convert datetime back to string for JSON serialization
+                    df['publish_date'] = df['publish_date'].dt.strftime('%Y-%m-%d %H:%M:%S')
+                    # Replace NaT with empty string
+                    df['publish_date'] = df['publish_date'].fillna('')
             
             # Convert to dict and ensure all values are JSON serializable
             articles = df.head(limit).to_dict('records')

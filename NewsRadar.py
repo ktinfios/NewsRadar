@@ -233,8 +233,8 @@ def main(companies : list[str] = COMPANIES, key_terms: list[str] = KEY_TERMS):
 
     news_articles = []
 
-    for company in tqdm(COMPANIES, desc="Processing Companies"):
-        for term in KEY_TERMS:
+    for company in tqdm(companies, desc="Processing Companies"):
+        for term in key_terms:
             news_article = search_news_rss(company, term)
 
             for article in news_article:
@@ -269,6 +269,103 @@ def main(companies : list[str] = COMPANIES, key_terms: list[str] = KEY_TERMS):
         logging.info(f"Email sent successfully to {RECIEVER_EMAIL}")
     except Exception as e:
         logging.error(f"Failed to send email to {RECIEVER_EMAIL}: {e}")
+    
+    # Return results for web app usage
+    return {
+        'all_articles': news_articles,
+        'new_articles': new_news_articles,
+        'subject': subject,
+        'body': body
+    }
+
+def main_web_friendly(companies: list[str], key_terms: list[str], progress_callback=None, receiver_email=None):
+    """Web-app friendly version of main function with progress tracking and custom email"""
+    try:
+        if progress_callback:
+            progress_callback(10, "Initializing search...")
+        
+        old_articles = get_old_articles()
+        news_articles = []
+        
+        total_combinations = len(companies) * len(key_terms)
+        current_combination = 0
+        
+        if progress_callback:
+            progress_callback(20, "Searching for news articles...")
+        
+        for company in companies:
+            for term in key_terms:
+                current_combination += 1
+                if progress_callback:
+                    progress = 20 + int((current_combination / total_combinations) * 60)
+                    progress_callback(progress, f"Searching {company} for {term}...")
+                
+                news_article = search_news_rss(company, term)
+                for article in news_article:
+                    news_articles.append(article)
+                sleep(0.25)
+        
+        if progress_callback:
+            progress_callback(85, "Processing results...")
+        
+        news_articles = pd.DataFrame(news_articles)
+        
+        if not old_articles.empty and 'url' in old_articles.columns:
+            new_news_articles = news_articles[~news_articles['url'].isin(old_articles['url'])]
+        else:
+            new_news_articles = news_articles
+            logging.info("No previous articles found or invalid format, treating all articles as new.")
+        
+        # Save articles
+        if not news_articles.empty:
+            news_articles[["company", "key_term","title", "publish_date", "url"]].to_csv(
+                "news_articles.csv", index=False, encoding='utf-8-sig', mode='a')
+        
+        # Prepare email
+        subject = f"NewsRadar - {datetime.now().strftime('%Y-%m-%d')}"
+        body = ""
+        
+        if not new_news_articles.empty:
+            logging.info(f"Found {len(new_news_articles)} new articles.")
+            write_to_text_file(new_news_articles, "news_articles.txt")
+            subject += f"- Found {len(new_news_articles)} new articles"
+            body = write_to_email_body(new_news_articles)
+        else:
+            logging.info("No new articles found.")
+            subject += " - No New Articles"
+            body = "No news articles found this week."
+        
+        # Send email if receiver_email is provided
+        if receiver_email:
+            try:
+                send_email(receiver_email, subject, body)
+                logging.info(f"Email sent successfully to {receiver_email}")
+            except Exception as e:
+                logging.error(f"Failed to send email to {receiver_email}: {e}")
+        
+        if progress_callback:
+            progress_callback(100, f"Search completed! Found {len(new_news_articles)} new articles.")
+        
+        return {
+            'success': True,
+            'all_articles': news_articles,
+            'new_articles': new_news_articles,
+            'subject': subject,
+            'body': body,
+            'message': f"Found {len(new_news_articles)} new articles."
+        }
+        
+    except Exception as e:
+        logging.error(f"Error in main_web_friendly: {e}")
+        if progress_callback:
+            progress_callback(0, f"Search failed: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e),
+            'all_articles': pd.DataFrame(),
+            'new_articles': pd.DataFrame(),
+            'message': f"Search failed: {str(e)}"
+        }
 
 if __name__ == "__main__":
     main()
