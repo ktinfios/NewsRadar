@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NewsRadar Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .article-card {
+            transition: transform 0.2s;
+        }
+        .article-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-running {
+            background-color: #ffc107;
+            animation: pulse 1.5s infinite;
+        }
+        .status-ready {
+            background-color: #28a745;
+        }
+        .status-error {
+            background-color: #dc3545;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .navbar-brand {
+            font-weight: bold;
+            color: #2c5aa0 !important;
+        }
+        .stats-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-satellite-dish me-2"></i>NewsRadar
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link active" href="/">Dashboard</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Status and Controls -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Search Status</h5>
+                        <div id="search-status">
+                            <span class="status-indicator status-ready" id="status-indicator"></span>
+                            <span id="status-message">Ready</span>
+                        </div>
+                        <div class="progress mt-2" style="display: none;" id="progress-bar">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <button class="btn btn-success" id="manual-search-btn" onclick="startManualSearch()" 
+                                title="Search using your current selection (set in Custom Search)">
+                            <i class="fas fa-search me-2"></i>Search Selected
+                        </button>
+                        <button class="btn btn-outline-primary ms-2" onclick="showSearchModal()">
+                            <i class="fas fa-cogs me-2"></i>Custom Search
+                        </button>
+                    </div>
+                    <div class="card-footer bg-transparent">
+                        <small class="text-muted text-center d-block" id="current-selection-info">
+                            <i class="fas fa-info-circle me-1"></i>
+                            <span id="selection-summary">Loading selection...</span>
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Configuration Modal -->
+        <div class="modal fade" id="searchModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Custom Search Configuration</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Select Companies</h6>
+                                <div class="mb-3">
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="selectAllCompanies()">Select All</button>
+                                    <button class="btn btn-outline-secondary btn-sm ms-1" onclick="clearAllCompanies()">Clear All</button>
+                                </div>
+                                <div id="company-selection" class="mb-3" style="max-height: 200px; overflow-y: auto;">
+                                    {% for company in companies %}
+                                    <div class="form-check">
+                                        <input class="form-check-input company-checkbox" type="checkbox" 
+                                               value="{{ company }}" id="company-{{ loop.index }}"
+                                               {% if company in selected_companies %}checked{% endif %}>
+                                        <label class="form-check-label" for="company-{{ loop.index }}">
+                                            {{ company }}
+                                            {% if default_companies and company not in default_companies %}
+                                            <span class="badge bg-info">Custom</span>
+                                            {% endif %}
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="new-company" placeholder="Add new company">
+                                    <button class="btn btn-outline-primary" onclick="addCustomCompany()">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Select Key Terms</h6>
+                                <div class="mb-3">
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="selectAllKeyTerms()">Select All</button>
+                                    <button class="btn btn-outline-secondary btn-sm ms-1" onclick="clearAllKeyTerms()">Clear All</button>
+                                </div>
+                                <div id="keyterm-selection" class="mb-3" style="max-height: 200px; overflow-y: auto;">
+                                    {% for term in key_terms %}
+                                    <div class="form-check">
+                                        <input class="form-check-input keyterm-checkbox" type="checkbox" 
+                                               value="{{ term }}" id="term-{{ loop.index }}"
+                                               {% if term in selected_key_terms %}checked{% endif %}>
+                                        <label class="form-check-label" for="term-{{ loop.index }}">
+                                            {{ term }}
+                                            {% if default_key_terms and term not in default_key_terms %}
+                                            <span class="badge bg-warning">Custom</span>
+                                            {% endif %}
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="new-keyterm" placeholder="Add new key term">
+                                    <button class="btn btn-outline-primary" onclick="addCustomKeyTerm()">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="saveSearchPreferences()">Save Preferences</button>
+                        <button type="button" class="btn btn-success" onclick="startCustomSearch()">Search Now</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-newspaper fa-2x mb-2"></i>
+                        <h4 id="total-articles">{{ total_articles }}</h4>
+                        <p class="mb-0">Total Articles</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-building fa-2x mb-2"></i>
+                        <h4>{{ companies|length }}</h4>
+                        <p class="mb-0">Companies Tracked</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-tags fa-2x mb-2"></i>
+                        <h4>{{ key_terms|length }}</h4>
+                        <p class="mb-0">Key Terms</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-clock fa-2x mb-2"></i>
+                        <h4 id="last-updated">Today</h4>
+                        <p class="mb-0">Last Updated</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Articles -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Recent Articles</h5>
+                        <button class="btn btn-outline-primary btn-sm" onclick="refreshArticles()">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="card-body" id="articles-container">
+                        {% if articles %}
+                            <div class="row">
+                                {% for article in articles %}
+                                <div class="col-md-6 col-lg-4 mb-3">
+                                    <div class="card article-card h-100">
+                                        <div class="card-body">
+                                            <h6 class="card-title">{{ article.title[:80] }}{% if article.title|length > 80 %}...{% endif %}</h6>
+                                            <p class="card-text">
+                                                <small class="text-muted">
+                                                    <i class="fas fa-building me-1"></i>{{ article.company }}
+                                                    <br>
+                                                    <i class="fas fa-tag me-1"></i>{{ article.key_term }}
+                                                    <br>
+                                                    <i class="fas fa-calendar me-1"></i>{{ article.publish_date }}
+                                                </small>
+                                            </p>
+                                            {% if article.summary %}
+                                            <p class="card-text">{{ article.summary[:100] }}{% if article.summary|length > 100 %}...{% endif %}</p>
+                                            {% endif %}
+                                        </div>
+                                        <div class="card-footer">
+                                            <a href="{{ article.url }}" target="_blank" class="btn btn-primary btn-sm">
+                                                <i class="fas fa-external-link-alt me-1"></i>Read Article
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-center text-muted">
+                                <i class="fas fa-newspaper fa-3x mb-3"></i>
+                                <p>No articles found yet. Use "Custom Search" to select companies and terms, then click "Search Selected" to start searching.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let searchStatusInterval = null;
+
+        function showSearchModal() {
+            const modal = new bootstrap.Modal(document.getElementById('searchModal'));
+            modal.show();
+        }
+
+        function selectAllCompanies() {
+            document.querySelectorAll('.company-checkbox').forEach(cb => cb.checked = true);
+        }
+
+        function clearAllCompanies() {
+            document.querySelectorAll('.company-checkbox').forEach(cb => cb.checked = false);
+        }
+
+        function selectAllKeyTerms() {
+            document.querySelectorAll('.keyterm-checkbox').forEach(cb => cb.checked = true);
+        }
+
+        function clearAllKeyTerms() {
+            document.querySelectorAll('.keyterm-checkbox').forEach(cb => cb.checked = false);
+        }
+
+        function addCustomCompany() {
+            const input = document.getElementById('new-company');
+            const company = input.value.trim();
+            
+            if (!company) {
+                alert('Please enter a company name');
+                return;
+            }
+
+            fetch('/api/add_custom', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'company', value: company })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    // Add to the selection list
+                    const container = document.getElementById('company-selection');
+                    const newId = 'company-new-' + Date.now();
+                    const div = document.createElement('div');
+                    div.className = 'form-check';
+                    div.innerHTML = `
+                        <input class="form-check-input company-checkbox" type="checkbox" 
+                               value="${company}" id="${newId}" checked>
+                        <label class="form-check-label" for="${newId}">
+                            ${company} <span class="badge bg-info">Custom</span>
+                        </label>
+                    `;
+                    container.appendChild(div);
+                    input.value = '';
+                    alert(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error adding custom company');
+            });
+        }
+
+        function addCustomKeyTerm() {
+            const input = document.getElementById('new-keyterm');
+            const keyTerm = input.value.trim();
+            
+            if (!keyTerm) {
+                alert('Please enter a key term');
+                return;
+            }
+
+            fetch('/api/add_custom', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'key_term', value: keyTerm })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    // Add to the selection list
+                    const container = document.getElementById('keyterm-selection');
+                    const newId = 'term-new-' + Date.now();
+                    const div = document.createElement('div');
+                    div.className = 'form-check';
+                    div.innerHTML = `
+                        <input class="form-check-input keyterm-checkbox" type="checkbox" 
+                               value="${keyTerm}" id="${newId}" checked>
+                        <label class="form-check-label" for="${newId}">
+                            ${keyTerm} <span class="badge bg-warning">Custom</span>
+                        </label>
+                    `;
+                    container.appendChild(div);
+                    input.value = '';
+                    alert(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error adding custom key term');
+            });
+        }
+
+        function saveSearchPreferences() {
+            const selectedCompanies = Array.from(document.querySelectorAll('.company-checkbox:checked')).map(cb => cb.value);
+            const selectedKeyTerms = Array.from(document.querySelectorAll('.keyterm-checkbox:checked')).map(cb => cb.value);
+
+            fetch('/api/preferences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    selected_companies: selectedCompanies,
+                    selected_key_terms: selectedKeyTerms
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    alert(data.message);
+                    updateSelectionInfo(); // Update the selection info display
+                    bootstrap.Modal.getInstance(document.getElementById('searchModal')).hide();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error saving preferences');
+            });
+        }
+
+        function startCustomSearch() {
+            const selectedCompanies = Array.from(document.querySelectorAll('.company-checkbox:checked')).map(cb => cb.value);
+            const selectedKeyTerms = Array.from(document.querySelectorAll('.keyterm-checkbox:checked')).map(cb => cb.value);
+
+            if (selectedCompanies.length === 0 || selectedKeyTerms.length === 0) {
+                alert('Please select at least one company and one key term');
+                return;
+            }
+
+            // Save preferences first
+            fetch('/api/preferences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    selected_companies: selectedCompanies,
+                    selected_key_terms: selectedKeyTerms
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    updateSelectionInfo(); // Update the selection info display
+                    // Start search
+                    startSearchWithParams(selectedCompanies, selectedKeyTerms);
+                    bootstrap.Modal.getInstance(document.getElementById('searchModal')).hide();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error saving preferences');
+            });
+        }
+
+        function startManualSearch() {
+            // Load current user preferences to get selected companies and key terms
+            fetch('/api/preferences')
+                .then(response => response.json())
+                .then(preferences => {
+                    const selectedCompanies = preferences.selected_companies || [];
+                    const selectedKeyTerms = preferences.selected_key_terms || [];
+                    
+                    if (selectedCompanies.length === 0 || selectedKeyTerms.length === 0) {
+                        alert('No companies or key terms are currently selected. Please use "Custom Search" to select what to search for.');
+                        return;
+                    }
+                    
+                    startSearchWithParams(selectedCompanies, selectedKeyTerms);
+                })
+                .catch(error => {
+                    console.error('Error loading preferences:', error);
+                    alert('Error loading search preferences. Please try using Custom Search instead.');
+                });
+        }
+
+        function startSearchWithParams(companies = null, keyTerms = null) {
+            const btn = document.getElementById('manual-search-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Searching...';
+
+            const payload = {};
+            if (companies && keyTerms) {
+                payload.companies = companies;
+                payload.key_terms = keyTerms;
+            }
+
+            fetch('/api/search', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    resetSearchButton();
+                } else {
+                    startStatusPolling();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error starting search');
+                resetSearchButton();
+            });
+        }
+
+        function startStatusPolling() {
+            searchStatusInterval = setInterval(checkSearchStatus, 2000);
+        }
+
+        function checkSearchStatus() {
+            fetch('/api/search/status')
+                .then(response => response.json())
+                .then(data => {
+                    updateSearchStatus(data);
+                    if (!data.running) {
+                        clearInterval(searchStatusInterval);
+                        
+                        // Show refreshing status
+                        const indicator = document.getElementById('status-indicator');
+                        const message = document.getElementById('status-message');
+                        indicator.className = 'status-indicator status-running';
+                        message.textContent = 'Refreshing dashboard...';
+                        
+                        // Automatically refresh articles and stats after search completion
+                        setTimeout(() => {
+                            refreshArticles();
+                            updateSelectionInfo();
+                            refreshStats();
+                            
+                            // Reset to ready state after refresh
+                            setTimeout(() => {
+                                indicator.className = 'status-indicator status-ready';
+                                message.textContent = 'Ready';
+                                resetSearchButton();
+                            }, 1500);
+                        }, 1000);
+                    }
+                });
+        }
+
+        function updateSearchStatus(status) {
+            const indicator = document.getElementById('status-indicator');
+            const message = document.getElementById('status-message');
+            const progressBar = document.getElementById('progress-bar');
+
+            message.textContent = status.message;
+
+            if (status.running) {
+                indicator.className = 'status-indicator status-running';
+                progressBar.style.display = 'block';
+                progressBar.querySelector('.progress-bar').style.width = status.progress + '%';
+            } else if (status.message.includes('failed') || status.message.includes('Error')) {
+                indicator.className = 'status-indicator status-error';
+                progressBar.style.display = 'none';
+            } else {
+                indicator.className = 'status-indicator status-ready';
+                progressBar.style.display = 'none';
+            }
+        }
+
+        function resetSearchButton() {
+            const btn = document.getElementById('manual-search-btn');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-search me-2"></i>Manual Search';
+        }
+
+        function refreshArticles() {
+            fetch('/api/articles?limit=20')
+                .then(response => response.json())
+                .then(articles => {
+                    updateArticlesDisplay(articles);
+                    document.getElementById('total-articles').textContent = articles.length;
+                })
+                .catch(error => {
+                    console.error('Error refreshing articles:', error);
+                });
+        }
+
+        function refreshStats() {
+            fetch('/api/stats')
+                .then(response => response.json())
+                .then(stats => {
+                    // Update total articles
+                    if (stats.total_articles !== undefined) {
+                        document.getElementById('total-articles').textContent = stats.total_articles;
+                    }
+                    
+                    // Update last updated time
+                    if (stats.last_updated && stats.last_updated !== 'Never') {
+                        document.getElementById('last-updated').textContent = 
+                            new Date(stats.last_updated).toLocaleDateString();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error refreshing stats:', error);
+                });
+        }
+
+        function updateArticlesDisplay(articles) {
+            const container = document.getElementById('articles-container');
+            
+            if (articles.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-muted">
+                        <i class="fas fa-newspaper fa-3x mb-3"></i>
+                        <p>No articles found yet. Use "Custom Search" to select companies and terms, then click "Search Selected" to start searching.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="row">';
+            articles.forEach(article => {
+                const title = article.title ? (article.title.length > 80 ? article.title.substring(0, 80) + '...' : article.title) : 'No title';
+                const summary = article.summary ? (article.summary.length > 100 ? article.summary.substring(0, 100) + '...' : article.summary) : '';
+                
+                html += `
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card article-card h-100" style="animation: fadeIn 0.5s ease-in;">
+                            <div class="card-body">
+                                <h6 class="card-title">${title}</h6>
+                                <p class="card-text">
+                                    <small class="text-muted">
+                                        <i class="fas fa-building me-1"></i>${article.company || 'Unknown'}
+                                        <br>
+                                        <i class="fas fa-tag me-1"></i>${article.key_term || 'Unknown'}
+                                        <br>
+                                        <i class="fas fa-calendar me-1"></i>${article.publish_date || 'Unknown date'}
+                                    </small>
+                                </p>
+                                ${summary ? `<p class="card-text">${summary}</p>` : ''}
+                            </div>
+                            <div class="card-footer">
+                                <a href="${article.url}" target="_blank" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-external-link-alt me-1"></i>Read Article
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            // Add fade-in animation
+            container.style.opacity = '0.5';
+            container.innerHTML = html;
+            
+            // Fade back in
+            setTimeout(() => {
+                container.style.opacity = '1';
+                container.style.transition = 'opacity 0.3s ease-in-out';
+            }, 100);
+        }
+
+        // Load stats on page load
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(stats => {
+                if (stats.last_updated && stats.last_updated !== 'Never') {
+                    document.getElementById('last-updated').textContent = 
+                        new Date(stats.last_updated).toLocaleDateString();
+                }
+            });
+
+        // Load and display current selection info
+        function updateSelectionInfo() {
+            fetch('/api/preferences')
+                .then(response => response.json())
+                .then(preferences => {
+                    const selectedCompanies = preferences.selected_companies || [];
+                    const selectedKeyTerms = preferences.selected_key_terms || [];
+                    
+                    const summaryElement = document.getElementById('selection-summary');
+                    if (selectedCompanies.length === 0 || selectedKeyTerms.length === 0) {
+                        summaryElement.innerHTML = 'No selection made. Use Custom Search to select companies and terms.';
+                        summaryElement.className = 'text-warning';
+                        document.getElementById('manual-search-btn').disabled = true;
+                    } else {
+                        summaryElement.innerHTML = `${selectedCompanies.length} companies, ${selectedKeyTerms.length} key terms selected`;
+                        summaryElement.className = 'text-muted';
+                        document.getElementById('manual-search-btn').disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading selection info:', error);
+                    document.getElementById('selection-summary').innerHTML = 'Error loading selection info';
+                });
+        }
+
+        // Load selection info on page load
+        updateSelectionInfo();
+    </script>
+</body>
+</html>

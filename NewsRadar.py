@@ -3,39 +3,77 @@ import feedparser
 import logging
 import pandas as pd 
 import nltk 
+import os 
+from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from Email import send_email
 from newspaper import Article
 from playwright.sync_api import sync_playwright
-
 from time import sleep 
 from tqdm import tqdm 
 from transformers import PegasusTokenizer, PegasusForConditionalGeneration
 from urllib.parse import quote_plus
 
-logging.basicConfig(filename='app.log', level=logging.DEBUG,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# region 
+load_dotenv()
 
+# endregion 
+
+# region Constants
 GOOGLE_NEWS_URL = "https://news.google.com"
 GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/search?q={}&hl=en-US&gl=US&ceid=US%3Aen"
 
 COMPANIES = ["Bulten", "Volvo", "Viking Life", "Rockwool A/S", "Carlsberg", 
              "Hornbach Baumarkt AG", "Bültel Bekleidungswerke GmbH",
-             "OBI Group Holding SE & Co.KGaA", "LKW Walter", "F. H. Bertling"]
-# KEY_TERMS = ["Digital Transformation", "Bottleneck", "Warehouse", "CEO", "Optimization", "Fulfillment",
-#              "Investment Funding", "Merger Acquisition"]
-KEY_TERMS = ["Warehouse", "CEO", "Investment Funding", "Merger Acquisition"]
+             "OBI Group Holding SE & Co.KGaA", "LKW Walter", "F. H. Bertling",
+             "Boulanger", "Lyreco", "Etam", "Rossignol", "Schneider", "Log's"]
+KEY_TERMS = ["Digital Transformation", "Bottleneck", "Warehouse", "CEO", "Optimization", "Fulfillment",
+             "Investment Funding", "Merger Acquisition", "Sustainability", "Lead Time", "Bill of Lading",
+             "Incoterms", "Freight Forwarder", "Third-Party Logistics (3PL)", "Fourth-Party Logistics (4PL)",
+             "Last-Mile Delivery", "Cross-Docking", "Reverse Logistics", "Safety Stock",
+             "Stock Keeping Unit (SKU)", "Economic Order Quantity (EOQ)", "Just-in-Time (JIT)", 
+             "Consignment Inventory", "Backorder", "Pick and Pack", "Order Fulfillment",
+             "Freight Consolidation", "Cold Chain Logistics", "Customs Clearance", "LTL (Less Than Truckload)",
+             "FTL (Full Truckload)", "Demurrage", "Detention", "Intermodal Transport",
+             "Port of Discharge (POD)", "Port of Loading (POL)", "Demand Forecasting",
+             "Vendor-Managed Inventory (VMI)", "Supply Chain Visibility (SCV)", "Reshoring",
+             "Nearshoring", "Offshoring", "Global Sourcing", "Supply Chain Resilience",
+             "Risk Mitigation", "Sustainability", "Green Supply Chain", "Circular Supply Chain",
+             "Carbon Footprint", "Decarbonization", "Digital Supply Chain", "Supply Chain 4.0",
+             "Blockchain in Logistics", "Artificial Intelligence (AI)", "Machine Learning (ML)",
+             "Predictive Analytics", "Internet of Things (IoT)", "Big Data Analytics",
+             "End-to-End Visibility", "Control Tower", "Omnichannel Fulfillment", "E-commerce Logistics",
+             "Supply Chain Diversification", "Geopolitical Risk", "Trade Compliance", "Port Congestion",
+             "Inventory Optimization", "Supplier Collaboration", "Total Cost of Ownership (TCO)",
+             "Agility", "Resilience Index", "Network Optimization", "Multi-Echelon Inventory",
+             "Strategic Sourcing", "Dual Sourcing", "Supplier Risk Management",
+             "Critical Supply", "Decentralized Warehousing", "Micro-Fulfillment Center",
+             "Urban Logistics", "Smart Warehousing", "Autonomous Vehicles", "Drones in Logistics",
+             "Robotics Process Automation (RPA)", "Additive Manufacturing (3D Printing)", "Digital Twin",
+             "Dynamic Routing", "Capacity Crunch", "Freight Rate Volatility", "Global Trade Tensions",
+             "Tariff Impact", "Energy Transition in Transport", "Sustainable Packaging",
+             "Extended Producer Responsibility (EPR)", "Reverse Supply Chain", "Collaborative Logistics",
+             "Shared Transport Networks", "Strategic Partnerships", "Outsourcing Strategy",
+             "Lines Orders", "Radio Parc", "Freight", "Highjump"
+]
+
+# KEY_TERMS = ["Warehouse", "CEO", "Investment Funding", "Merger Acquisition"]
 
 ARTICLE_AGE_DAYS = 90
 
-# NLTK Resources
+RECIEVER_EMAIL = os.getenv("SENDER_EMAIL")
+# endregion
+
+# region Logging 
+logging.basicConfig(filename='app.log', level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# endregion
+
+# region NLTK Resources
 nltk.download('popular')
+# endregion
 
-# Pegasus Model for Summarization
-# model = "google/pegasus-xsum"
-# tokenizer = PegasusTokenizer.from_pretrained(model)
-# model = PegasusForConditionalGeneration.from_pretrained(model)
-
-def get_old_articles():
+def get_old_articles() -> pd.DataFrame:
     try:
         with open("news_articles.csv", "r") as f:
             reader = csv.DictReader(f)
@@ -81,15 +119,7 @@ def skip_article_based_on_age(news_item, age_days: int) -> bool:
 
     return article_date < time_frame
 
-# def summarize_article(text: str) -> str:
-    
-#     tokens = tokenizer(text, truncation=True, padding="longest", return_tensors="pt")
-#     summary_ids = model.generate(**tokens)
-#     summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
-
-#     return summary
-
-def parse_article(article: Article, url: str = None) -> dict:
+def parse_article(article: Article, url: str = "") -> dict:
     try:
 
         article.download()
@@ -138,7 +168,7 @@ def search_news_rss(company: str, key_term: str) -> list:
             news_item = {
                 'title': entry.title,
                 'url': article_url,
-                'published': entry.published,
+                'publish_date': entry.published,
                 'summary': entry.summary if 'summary' in entry else '',
                 'text': "",
                 'company': company,
@@ -152,7 +182,10 @@ def search_news_rss(company: str, key_term: str) -> list:
             try:
                 article_obj = Article(article_url)
                 parsed_article = parse_article(article_obj, article_url)
-                news_item["publish_date"] = parsed_article["publish_date"]
+
+                if parsed_article["publish_date"]:
+                    news_item["publish_date"] = parsed_article["publish_date"]
+
                 if parsed_article["summary"]:
                     news_item["summary"] = parsed_article["summary"]
                 else:
@@ -179,7 +212,20 @@ def write_to_text_file(news_articles: pd.DataFrame, filename: str = "news_articl
             f.write(f"Summary: {row['summary']}\n")
             f.write("\n")
 
-def main():
+def write_to_email_body(news_articles: pd.DataFrame) -> str:
+    body = "Found the following news articles:\n\n"
+    for index, row in news_articles.iterrows():
+        if row["title"] == "":
+            continue
+        body += f"{row['company']} - Focus: {row['key_term']}\n"
+        body += f"Title: {row['title']}\n"
+        body += f"Publish Date: {row['publish_date']}\n"
+        body += f"URL: {row['url']}\n"
+        body += f"Summary: {row['summary']}\n"
+        body += "\n"
+    return body
+
+def main(companies : list[str] = COMPANIES, key_terms: list[str] = KEY_TERMS):
 
     # Can replace with a DB to keep track of what old articles have been seen
     # Can remove old articles if they are past the date range 
@@ -205,11 +251,24 @@ def main():
 
     news_articles[["company", "key_term","title", "publish_date", "url"]].to_csv("news_articles.csv", index=False, encoding='utf-8-sig', mode='a')
 
+    subject = f"NewsRadar - {datetime.now().strftime('%Y-%m-%d')}"
+    body = ""
+
     if not new_news_articles.empty:
         print(f"Found {len(new_news_articles)} new articles.")
         write_to_text_file(new_news_articles, "news_articles.txt")
+        subject += f"- Found {len(new_news_articles)} new articles"
+        body = write_to_email_body(new_news_articles)
     else:
         print("No new articles found.")
+        subject += " - No New Articles"
+        body = "No news articles found this week."
+        
+    try:
+        send_email(RECIEVER_EMAIL, subject, body)
+        logging.info(f"Email sent successfully to {RECIEVER_EMAIL}")
+    except Exception as e:
+        logging.error(f"Failed to send email to {RECIEVER_EMAIL}: {e}")
 
 if __name__ == "__main__":
     main()

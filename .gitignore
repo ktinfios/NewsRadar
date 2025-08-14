@@ -1,3 +1,55 @@
+# Testing and development directories
 /Testing_Files
 /testing 
 /Results
+
+# Environment and configuration files
+*.env
+
+# Log files
+*.log
+
+# Data files (CSV/TXT outputs)
+*.csv
+*.txt
+
+# User-specific files
+user_preferences.json
+
+# Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Distribution and packaging
+build/
+dist/
+*.egg-info/
