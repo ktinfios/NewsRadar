@@ -328,13 +328,14 @@ def main_web_friendly(companies: list[str], key_terms: list[str], progress_callb
         if not new_news_articles.empty:
             logging.info(f"Found {len(new_news_articles)} new articles.")
             write_to_text_file(new_news_articles, "news_articles.txt")
-            subject += f"- Found {len(new_news_articles)} new articles"
-            body = write_to_email_body(new_news_articles)
+            subject += f" - Found {len(new_news_articles)} new articles"
+            body = "NewsRadar found the following new articles:\n\n"
+            body += write_to_email_body(new_news_articles)
         else:
             logging.info("No new articles found.")
             subject += " - No New Articles"
-            body = "No news articles found this week."
-        
+            body = "NewsRadar found no news articles."
+
         # Send email if receiver_email is provided
         if receiver_email:
             try:
