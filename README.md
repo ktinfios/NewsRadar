@@ -1,26 +1,19 @@
 # NewsRadar 
 
-A simple web-based dashboard for the NewsRadar news monitoring application.
+A simple web-based application that searches the web for relevant articles to companies based on specified key terms. After finding the articles, NewsRadar uses natural language processing to summarize each of the articles and then emails these summaries to the user.
 
 ## Features
-
-### 📊 Dashboard
 - **Real-time Statistics**: View total articles, tracked companies, and key terms
 - **Recent Articles**: Browse the latest news articles with company and key term filters
 - **Search Status**: Monitor manual search progress with real-time updates
-- **Manual Search**: Trigger news searches directly from the web interface
-
-### ⚙️ Settings
-- **Configuration Overview**: View current companies and key terms being tracked
-- **System Information**: Check Python version, environment status, and web interface details
-- **File Management**: Access to download data files and view logs
-- **Email Configuration**: Information about email setup requirements
+- **Custom Search**: Specify what companies and key terms to search for
+- **Email**: Automatically email the articles and their summaries to the specified email
 
 ## Quick Start
 
 ### 1. Install Required Packages
 ```powershell
-pip install requirements.txt
+pip install -r requirements.txt
 ```
 
 ### 2. Start the Web Interface
@@ -29,14 +22,11 @@ python start_web.py
 ```
 
 ### 3. Access the Dashboard
-Open your web browser and navigate to:
-- **Local Access**: http://localhost:5000
-- **Network Access**: http://0.0.0.0:5000 (for access from other devices)
+Open your web browser and navigate to: http://localhost:5000
 
 ## Usage
 
-### Manual Search
-1. Go to the Dashboard
+### Search
 2. Click the "Manual Search" button
 3. Monitor the search progress in real-time
 4. View new articles automatically loaded after search completion
@@ -47,31 +37,9 @@ Open your web browser and navigate to:
 - Use the "Refresh" button to reload articles without a full page refresh
 
 ### Monitor Status
-- Green indicator: System ready
-- Yellow (pulsing): Search in progress
+- Green: System ready
+- Yellow : Search in progress
 - Red: Error occurred
-
-## API Endpoints
-
-The web interface provides several REST API endpoints:
-
-- `GET /api/articles?limit=20` - Fetch recent articles
-- `POST /api/search` - Trigger manual search
-- `GET /api/search/status` - Get current search status
-- `GET /api/stats` - Get system statistics
-
-## File Structure
-
-```
-NewsRadar/
-├── web_app.py              # Main Flask application
-├── start_web.py            # Startup script
-├── templates/
-│   ├── dashboard.html      # Main dashboard page
-│   └── settings.html       # Settings and configuration page
-├── NewsRadar.py            # Core news search functionality
-└── news_articles.csv       # Article data storage
-```
 
 ## Configuration
 
@@ -82,42 +50,17 @@ Configure email functionality through environment variables:
 
 ### Search Parameters
 Modify search parameters in `NewsRadar.py`:
-- `COMPANIES`: List of companies to monitor
-- `KEY_TERMS`: List of key terms to search for
+- `COMPANIES`: Default list of companies to monitor
+- `KEY_TERMS`: Default list of key terms to search for
 - `ARTICLE_AGE_DAYS`: Maximum age of articles to include
 
-## Troubleshooting
+## Future Improvements
 
-### Common Issues
-
-1. **Import Errors**
-   - Ensure Flask is installed: `pip install flask flask-cors`
-   - Check that you're in the correct directory
-
-2. **Port Already in Use**
-   - Change the port in `web_app.py`: `app.run(port=5001)`
-   - Or kill existing processes using port 5000
-
-3. **No Articles Displayed**
-   - Run a manual search first
-   - Check that `news_articles.csv` exists and contains data
-
-4. **Search Fails**
-   - Check internet connection
-   - Verify that all required packages are installed
-   - Check `app.log` for detailed error messages
-
-### Development Mode
-
-The web interface runs in debug mode by default, which provides:
-- Automatic reloading when files change
-- Detailed error messages
-- Enhanced logging
-
-To disable debug mode, modify `web_app.py`:
-```python
-app.run(debug=False, host='0.0.0.0', port=5000)
-```
+- Add functionality to specify what email to send to 
+   - Currently defined in the .env file and uses sender email 
+- Fine tune an tranformer model or other neural network (like [Pegasus](https://huggingface.co/docs/transformers/en/model_doc/pegasus)) to produce better summarizes 
+- Find a way to speed up the current NLP portion of the application 
+   - NLP is expensive, so finding ways to speed up how this is done would speed up the overall application
 
 ## Security Notes
 
